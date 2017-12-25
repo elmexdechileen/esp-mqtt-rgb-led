@@ -21,14 +21,11 @@ const bool debug_mode = CONFIG_DEBUG;
 const bool led_invert = CONFIG_INVERT_LED_LOGIC;
 
 const int redPin = CONFIG_PIN_LIGHT;
-const int txPin = BUILTIN_LED; // On-board blue LED
-// const int greenPin = 2;
-// const int bluePin = 3;
+//const int txPin = BUILTIN_LED; // On-board blue LED
 
-const char* ssid = CONFIG_WIFI_SSID;
-const char* password = CONFIG_WIFI_PASS;
 
-const char* mqtt_server = CONFIG_MQTT_HOST;
+//const char* mqtt_server = CONFIG_MQTT_HOST;
+IPAddress mqtt_server(192, 168, 1, 145);
 const char* mqtt_username = CONFIG_MQTT_USER;
 const char* mqtt_password = CONFIG_MQTT_PASS;
 const char* client_id = CONFIG_MQTT_CLIENT_ID;
@@ -44,14 +41,11 @@ const int BUFFER_SIZE = JSON_OBJECT_SIZE(8);
 
 // Maintained state for reporting to HA
 byte red = 255;
-// byte green = 255;
-// byte blue = 255;
+
 byte brightness = 255;
 
 // Real values to write to the LEDs (ex. including brightness and state)
 byte realRed = 0;
-// byte realGreen = 0;
-// byte realBlue = 0;
 
 bool stateOn = false;
 
@@ -61,8 +55,8 @@ unsigned long lastLoop = 0;
 int transitionTime = 0;
 bool inFade = false;
 int loopCount = 0;
-int stepR; //, stepG, stepB;
-int redVal; //, grnVal, bluVal;
+int stepR;
+int redVal; 
 
 // Globals for flash
 bool flash = false;
@@ -70,25 +64,25 @@ bool startFlash = false;
 int flashLength = 0;
 unsigned long flashStartTime = 0;
 byte flashRed = red;
-// byte flashGreen = green;
-// byte flashBlue = blue;
 byte flashBrightness = brightness;
 
 byte mac[] = {
   0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02
 };
 
-// Set up mqtt server
-const char* server = "192.168.1.145";
-
-// Initialize the Ethernet client library
-// with the IP address and port of the server
-// that you want to connect to (port 80 is default for HTTP):
+// Set up Ethernet client
 EthernetClient ethernetClient;
 
+// And MQTT client
 PubSubClient client(ethernetClient);
 
 void setup() {
+  if (debug_mode) {
+    Serial.begin(9600);
+    Serial.println("DEBUG MODE");
+  }
+  
+  
   // start the Ethernet connection:
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP");
@@ -98,19 +92,9 @@ void setup() {
   }
   
   pinMode(redPin, OUTPUT);
-  // pinMode(greenPin, OUTPUT);
-  // pinMode(bluePin, OUTPUT);
 
-  pinMode(txPin, OUTPUT);
-  digitalWrite(txPin, HIGH); // Turn off the on-board LED
+  //analogWriteRange(255);
 
-  analogWriteRange(255);
-
-  if (debug_mode) {
-    Serial.begin(115200);
-  }
-
-  setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 }
@@ -143,13 +127,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
   if (stateOn) {
     // Update lights
     realRed = map(red, 0, 255, 0, brightness);
-    // realGreen = map(green, 0, 255, 0, brightness);
-    // realBlue = map(blue, 0, 255, 0, brightness);
   }
   else {
     realRed = 0;
-    // realGreen = 0;
-    // realBlue = 0;
   }
 
   startFade = true;
@@ -177,7 +157,6 @@ bool processJson(char* message) {
     }
   }
 
-  // If "flash" is included, treat RGB and brightness differently
   if (root.containsKey("flash") ||
        (root.containsKey("effect") && strcmp(root["effect"], "flash") == 0)) {
 
@@ -194,32 +173,13 @@ bool processJson(char* message) {
       flashBrightness = brightness;
     }
 
-    // if (root.containsKey("color")) {
-    //   flashRed = root["color"]["r"];
-    //   flashGreen = root["color"]["g"];
-    //   flashBlue = root["color"]["b"];
-    // }
-    // else {
-    //   flashRed = red;
-    //   flashGreen = green;
-    //   flashBlue = blue;
-    // }
-
     flashRed = map(flashRed, 0, 255, 0, flashBrightness);
-    // flashGreen = map(flashGreen, 0, 255, 0, flashBrightness);
-    // flashBlue = map(flashBlue, 0, 255, 0, flashBrightness);
-
+   
     flash = true;
     startFlash = true;
   }
   else { // Not flashing
     flash = false;
-
-    // if (root.containsKey("color")) {
-    //   red = root["color"]["r"];
-    //   green = root["color"]["g"];
-    //   blue = root["color"]["b"];
-    // }
 
     if (root.containsKey("brightness")) {
       brightness = root["brightness"];
@@ -242,10 +202,6 @@ void sendState() {
   JsonObject& root = jsonBuffer.createObject();
 
   root["state"] = (stateOn) ? on_cmd : off_cmd;
-  // JsonObject& color = root.createNestedObject("color");
-  // color["r"] = red;
-  // color["g"] = green;
-  // color["b"] = blue;
 
   root["brightness"] = brightness;
 
@@ -259,8 +215,9 @@ void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    // Attempt to connect
+    // Attempt to connect (no password test)
     if (client.connect(client_id, mqtt_username, mqtt_password)) {
+    //if (client.connect(client_id)) {
       Serial.println("connected");
       client.subscribe(light_set_topic);
     } else {
@@ -273,22 +230,15 @@ void reconnect() {
   }
 }
 
-void setColor(int inR) { //, int inG, int inB) {
+void setColor(int inR) {
   if (led_invert) {
     inR = (255 - inR);
   }
   
   analogWrite(redPin, inR);
-  // analogWrite(greenPin, inG);
-  // analogWrite(bluePin, inB);
-
   Serial.println("Setting LEDs:");
-  // Serial.print("r: ");
   Serial.println(inR);
-  // Serial.print(", g: ");
-  // Serial.print(inG);
-  // Serial.print(", b: ");
-  // Serial.println(inB);
+
 }
 
 void loop() {
@@ -306,37 +256,31 @@ void loop() {
 
     if ((millis() - flashStartTime) <= flashLength) {
       if ((millis() - flashStartTime) % 1000 <= 500) {
-        setColor(flashRed); //, flashGreen, flashBlue);
+        setColor(flashRed);
       }
       else {
-        setColor(0); //, 0, 0);
-        // If you'd prefer the flashing to happen "on top of"
-        // the current color, uncomment the next line.
-        // setColor(realRed, realGreen, realBlue);
+        setColor(0); 
       }
     }
     else {
       flash = false;
-      setColor(realRed); //, realGreen, realBlue);
+      setColor(realRed);
     }
   }
 
   if (startFade) {
+    Serial.println(transitionTime);
     // If we don't want to fade, skip it.
     if (transitionTime == 0) {
-      setColor(realRed); //, realGreen, realBlue);
+      setColor(realRed);
 
       redVal = realRed;
-      // grnVal = realGreen;
-      // bluVal = realBlue;
 
       startFade = false;
     }
     else {
       loopCount = 0;
       stepR = calculateStep(redVal, realRed);
-      // stepG = calculateStep(grnVal, realGreen);
-      // stepB = calculateStep(bluVal, realBlue);
 
       inFade = true;
     }
@@ -350,11 +294,10 @@ void loop() {
         lastLoop = now;
 
         redVal = calculateVal(stepR, redVal, loopCount);
-        // grnVal = calculateVal(stepG, grnVal, loopCount);
-        // bluVal = calculateVal(stepB, bluVal, loopCount);
 
-        setColor(redVal); //, grnVal, bluVal); // Write current values to LED pins
-
+        setColor(redVal); // Write current values to LED pins
+        //setColor(brightness);
+        
         Serial.print("Loop count: ");
         Serial.println(loopCount);
         loopCount++;
