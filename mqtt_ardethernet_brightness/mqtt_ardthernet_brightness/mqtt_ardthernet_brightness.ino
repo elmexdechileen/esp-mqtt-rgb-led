@@ -20,11 +20,9 @@
 const bool debug_mode = CONFIG_DEBUG;
 const bool led_invert = CONFIG_INVERT_LED_LOGIC;
 
-const int redPin = CONFIG_PIN_LIGHT;
-//const int txPin = BUILTIN_LED; // On-board blue LED
-
-
-//const char* mqtt_server = CONFIG_MQTT_HOST;
+//const char* mqtt_server = CONFIG_MQTT_HOST; 
+// works only in this format, otherwise -2 error 
+// when connecting to MQTT broker.
 IPAddress mqtt_server(192, 168, 1, 145);
 const char* mqtt_username = CONFIG_MQTT_USER;
 const char* mqtt_password = CONFIG_MQTT_PASS;
@@ -57,6 +55,14 @@ bool inFade = false;
 int loopCount = 0;
 int stepR;
 int redVal; 
+
+// Pin of interest
+int pin;
+
+// Get possible pins
+int iopins[] = {2, 3, 4, 5, 6, 7, 8, 9, A0, A1, A2, A3, A4, A5};
+const int nInputs = sizeof(iopins)/sizeof(int);
+
 
 // Globals for flash
 bool flash = false;
@@ -91,8 +97,15 @@ void setup() {
       ;
   }
   
-  pinMode(redPin, OUTPUT);
+  // Set pins to listen on and fill label string
+  for (int i = 0; i < nInputs; i = i + 1) {
+    pinMode(iopins[i], OUTPUT);
+  }
 
+  // For debug purposes only, just to stop the
+  // coil whine of my psu...
+  analogWrite(3, 255);
+  
   //analogWriteRange(255);
 
   client.setServer(mqtt_server, 1883);
@@ -145,6 +158,14 @@ bool processJson(char* message) {
 
   if (!root.success()) {
     Serial.println("parseObject() failed");
+    return false;
+  }
+
+  if (root.containsKey("channel")) {
+    pin = (int)root["channel"];
+  } else {
+    // Error when no channel is specified
+    Serial.println("No channel specified in payload!");
     return false;
   }
 
@@ -205,10 +226,20 @@ void sendState() {
 
   root["brightness"] = brightness;
 
+  root["channel"] = pin;
+
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
 
-  client.publish(light_state_topic, buffer, true);
+  // Loads of operations just to get it to a char array
+  String topic = (String)light_state_topic + "/" + (String)pin;
+  Serial.println(topic);
+  int str_len = topic.length() + 1; 
+  char char_array[str_len];
+
+  topic.toCharArray(char_array, str_len);
+
+  client.publish(char_array, buffer, true);
 }
 
 void reconnect() {
@@ -230,14 +261,14 @@ void reconnect() {
   }
 }
 
-void setColor(int inR) {
+void setColor(int col) {
   if (led_invert) {
-    inR = (255 - inR);
+    col = (255 - col);
   }
   
-  analogWrite(redPin, inR);
-  Serial.println("Setting LEDs:");
-  Serial.println(inR);
+  analogWrite(pin, col);
+  Serial.println("Setting light:");
+  Serial.println(col);
 
 }
 
