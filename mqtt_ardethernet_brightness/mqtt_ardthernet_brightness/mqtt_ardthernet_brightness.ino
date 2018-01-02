@@ -17,6 +17,9 @@
 // http://pubsubclient.knolleary.net/
 #include <PubSubClient.h>
 
+// DHT temp sensor support
+#include <DHT.h>
+
 const bool debug_mode = CONFIG_DEBUG;
 const bool led_invert = CONFIG_INVERT_LED_LOGIC;
 
@@ -31,6 +34,7 @@ const char* client_id = CONFIG_MQTT_CLIENT_ID;
 // Topics
 const char* light_state_topic = CONFIG_MQTT_TOPIC_STATE;
 const char* light_set_topic = CONFIG_MQTT_TOPIC_SET;
+const char* dht_topic = CONFIG_DHT_TOPIC;
 
 const char* on_cmd = CONFIG_MQTT_PAYLOAD_ON;
 const char* off_cmd = CONFIG_MQTT_PAYLOAD_OFF;
@@ -59,10 +63,15 @@ int redVal;
 // Pin of interest
 int pin;
 
-// Get possible pins
-int iopins[] = {2, 3, 4, 5, 6, 7, 8, 9, A0, A1, A2, A3, A4, A5};
+// Get possible pins for output channels PWM
+int iopins[] = CONFIG_PWM_PINS;
 const int nInputs = sizeof(iopins)/sizeof(int);
 
+// DHT settings
+DHT dht(CONFIG_DHT_DELAY, CONFIG_DHT_TYPE); //// Initialize DHT sensor for normal 16mhz Arduino
+float hum;  //Stores humidity value
+float temp; //Stores temperature value
+long DhtTimer;
 
 // Globals for flash
 bool flash = false;
@@ -106,10 +115,11 @@ void setup() {
   // coil whine of my psu...
   analogWrite(3, 255);
   
-  //analogWriteRange(255);
-
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  // Setup dht
+  dht.begin();
 }
 
  /*
@@ -338,37 +348,36 @@ void loop() {
       }
     }
   }
+
+  // DHT Routine
+  if ( DhtTimer < millis()) {
+    // If timer has expired get temp and humidity and send mqtt message
+    hum = dht.readHumidity();
+    temp = dht.readTemperature();
+
+
+    // Send the message
+    StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
+
+    JsonObject& root = jsonBuffer.createObject();
+  
+    root["temperature"] = temp;
+  
+    root["humidity"] = hum;
+ 
+    char buffer[root.measureLength() + 1];
+    root.printTo(buffer, sizeof(buffer));
+
+    // Publish to topic
+    client.publish(dht_topic, buffer, true);
+
+    // Reset timer
+    DhtTimer = millis() + CONFIG_DHT_DELAY;
+  } 
 }
 
 // From https://www.arduino.cc/en/Tutorial/ColorCrossfader
-/* BELOW THIS LINE IS THE MATH -- YOU SHOULDN'T NEED TO CHANGE THIS FOR THE BASICS
-*
-* The program works like this:
-* Imagine a crossfade that moves the red LED from 0-10,
-*   the green from 0-5, and the blue from 10 to 7, in
-*   ten steps.
-*   We'd want to count the 10 steps and increase or
-*   decrease color values in evenly stepped increments.
-*   Imagine a + indicates raising a value by 1, and a -
-*   equals lowering it. Our 10 step fade would look like:
-*
-*   1 2 3 4 5 6 7 8 9 10
-* R + + + + + + + + + +
-* G   +   +   +   +   +
-* B     -     -     -
-*
-* The red rises from 0 to 10 in ten steps, the green from
-* 0-5 in 5 steps, and the blue falls from 10 to 7 in three steps.
-*
-* In the real program, the color percentages are converted to
-* 0-255 values, and there are 1020 steps (255*4).
-*
-* To figure out how big a step there should be between one up- or
-* down-tick of one of the LED values, we call calculateStep(),
-* which calculates the absolute gap between the start and end values,
-* and then divides that gap by 1020 to determine the size of the step
-* between adjustments in the value.
-*/
+
 int calculateStep(int prevValue, int endValue) {
     int step = endValue - prevValue; // What's the overall gap?
     if (step) {                      // If its non-zero,
