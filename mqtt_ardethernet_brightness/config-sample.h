@@ -5,6 +5,16 @@
  * You can then upload the code using the Arduino IDE.
  */
 
+ 
+/* I2C Pins for different boards
+ *
+ *    Board;	I2C / TWI pins
+ *    Uno, Ethernet;	A4 (SDA), A5 (SCL)
+ *    Mega2560;	20 (SDA), 21 (SCL)
+ *    Leonardo;	2 (SDA), 3 (SCL)
+ *    Due;	20 (SDA), 21 (SCL), SDA1, SCL1
+ */ 
+ 
 // Pins
 #define CONFIG_PIN_LIGHT 0
 
@@ -37,3 +47,8 @@
 
 // Enables Serial and print statements
 #define CONFIG_DEBUG false
+
+// i2c settings
+#define I2C_IN_ADDR   16 >> 1 // I2C-INPUT-Addresse als 7 Bit
+#define I2C_OUT_ADDR 176 >> 1 // I2C-OUTPUT-Addresse als 7 Bit (all jumpers to off position)
+

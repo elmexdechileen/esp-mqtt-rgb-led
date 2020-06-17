@@ -17,13 +17,16 @@
 // http://pubsubclient.knolleary.net/
 #include <PubSubClient.h>
 
+// i2c lib (wswire otherwise ending transmission wont work)
+#include <WSWire.h>
+
 const bool debug_mode = CONFIG_DEBUG;
 const bool led_invert = CONFIG_INVERT_LED_LOGIC;
 
 //const char* mqtt_server = CONFIG_MQTT_HOST; 
 // works only in this format, otherwise -2 error 
 // when connecting to MQTT broker.
-IPAddress mqtt_server(192, 168, 1, 145);
+IPAddress mqtt_server(192, 168, 0, 10);
 const char* mqtt_username = CONFIG_MQTT_USER;
 const char* mqtt_password = CONFIG_MQTT_PASS;
 const char* client_id = CONFIG_MQTT_CLIENT_ID;
@@ -36,6 +39,7 @@ const char* on_cmd = CONFIG_MQTT_PAYLOAD_ON;
 const char* off_cmd = CONFIG_MQTT_PAYLOAD_OFF;
 
 const int BUFFER_SIZE = JSON_OBJECT_SIZE(8);
+
 
 // Maintained state for reporting to HA
 byte red = 255;
@@ -56,13 +60,16 @@ int loopCount = 0;
 int stepR;
 int redVal; 
 
+//i2c settings
+int  SEL=32;         // serielle Datenlänge
+char Empfang[32];  // Epfangsdaten der seriellen Schnittstelle
+byte HBy;
+byte LBy;
+int WERT;
+int KANAL;
+
 // Pin of interest
 int pin;
-
-// Get possible pins
-int iopins[] = {2, 3, 4, 5, 6, 7, 8, 9, A0, A1, A2, A3, A4, A5};
-const int nInputs = sizeof(iopins)/sizeof(int);
-
 
 // Globals for flash
 bool flash = false;
@@ -87,7 +94,9 @@ void setup() {
     Serial.begin(9600);
     Serial.println("DEBUG MODE");
   }
-  
+
+  // Initialize sda sdl pins
+  Wire.begin(); 
   
   // start the Ethernet connection:
   if (Ethernet.begin(mac) == 0) {
@@ -96,17 +105,6 @@ void setup() {
     for (;;)
       ;
   }
-  
-  // Set pins to listen on and fill label string
-  for (int i = 0; i < nInputs; i = i + 1) {
-    pinMode(iopins[i], OUTPUT);
-  }
-
-  // For debug purposes only, just to stop the
-  // coil whine of my psu...
-  analogWrite(3, 255);
-  
-  //analogWriteRange(255);
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
@@ -265,11 +263,25 @@ void setColor(int col) {
   if (led_invert) {
     col = (255 - col);
   }
-  
-  analogWrite(pin, col);
-  Serial.println("Setting light:");
-  Serial.println(col);
 
+  col = col *4;
+  
+  HBy = col / 256;        //HIGH-Byte berechnen
+  LBy = col - HBy * 256;  //LOW-Byte berechnen
+  
+  //Serial.println("Brightness");
+  //Serial.println(col);
+  //Serial.println("Channel");
+  //Serial.println(pin);
+  Serial.println("Begin Transmission");
+  
+  Wire.beginTransmission(I2C_OUT_ADDR); // Start Übertragung zur ANALOG-OUT Karte
+  Wire.write(pin);                      // Kanal schreiben
+  Wire.write(LBy);                      // LOW-Byte schreiben
+  Wire.write(HBy);                      // HIGH-Byte schreiben
+  Wire.endTransmission();               // Ende
+
+  Serial.println("End Transmission");
 }
 
 void loop() {
@@ -328,9 +340,7 @@ void loop() {
 
         setColor(redVal); // Write current values to LED pins
         //setColor(brightness);
-        
-        Serial.print("Loop count: ");
-        Serial.println(loopCount);
+       
         loopCount++;
       }
       else {
